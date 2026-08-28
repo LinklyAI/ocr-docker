@@ -14,7 +14,7 @@ RUN pip uninstall -y transformers || true \
       "transformers==${TRANSFORMERS_VERSION}" \
       "git+https://github.com/zai-org/glm-ocr.git@${GLM_OCR_COMMIT}" \
       "runpod==1.7.6" \
-      "requests==2.32.5" \
+      "requests==2.33.0" \
       "pillow==12.3.0" \
  && pip check
 
