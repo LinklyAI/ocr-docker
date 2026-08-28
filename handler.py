@@ -29,7 +29,10 @@ MAX_MODEL_LEN = os.getenv("MAX_MODEL_LEN", "16384")
 GPU_MEMORY_UTILIZATION = os.getenv("GPU_MEMORY_UTILIZATION", "0.95")
 SPECULATIVE_CONFIG = os.getenv(
     "SPECULATIVE_CONFIG",
-    '{"method": "mtp", "num_speculative_tokens": 1}',
+    (
+        '{"method": "ngram", "num_speculative_tokens": 1, '
+        '"prompt_lookup_max": 1, "prompt_lookup_min": 1}'
+    ),
 )
 ENFORCE_EAGER = os.getenv("ENFORCE_EAGER", "0").lower() in {"1", "true", "yes"}
 MAX_IMAGE_SIDE = int(os.getenv("MAX_IMAGE_SIDE", "2000"))
