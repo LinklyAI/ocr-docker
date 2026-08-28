@@ -5,6 +5,7 @@ Starts vLLM HTTP server in the background, waits for it to be ready,
 then forwards incoming RunPod jobs to the local OpenAI-compatible API.
 """
 
+import asyncio
 import os
 import time
 import base64
@@ -33,6 +34,7 @@ SPECULATIVE_CONFIG = os.getenv(
 ENFORCE_EAGER = os.getenv("ENFORCE_EAGER", "0").lower() in {"1", "true", "yes"}
 MAX_IMAGE_SIDE = int(os.getenv("MAX_IMAGE_SIDE", "2000"))
 USE_GLMOCR_SDK = os.getenv("USE_GLMOCR_SDK", "1").lower() in {"1", "true", "yes"}
+CONCURRENCY = max(1, int(os.getenv("CONCURRENCY", "1")))
 
 OCR_PARSER = None
 
@@ -419,7 +421,7 @@ def preprocess_images(job_input, job_id):
         )
 
 
-def handler(job):
+def _handle_job(job):
     """
     RunPod handler. Forwards the job input directly to vLLM's
     OpenAI-compatible chat completions endpoint.
@@ -500,8 +502,24 @@ def handler(job):
         raise
 
 
+async def handler(job):
+    """Run a blocking OCR job without blocking RunPod's event loop."""
+    return await asyncio.to_thread(_handle_job, job)
+
+
+def concurrency_modifier(_current_concurrency):
+    """Tell RunPod how many jobs this worker may process concurrently."""
+    return CONCURRENCY
+
+
 if __name__ == "__main__":
     vllm_process = start_vllm()
     wait_for_vllm()
     OCR_PARSER = init_glmocr_sdk()
-    runpod.serverless.start({"handler": handler})
+    log.info("RunPod worker concurrency configured to %s", CONCURRENCY)
+    runpod.serverless.start(
+        {
+            "handler": handler,
+            "concurrency_modifier": concurrency_modifier,
+        }
+    )
