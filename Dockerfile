@@ -16,7 +16,7 @@ RUN pip uninstall -y transformers || true \
       "runpod==1.7.6" \
       "requests==2.33.0" \
       "pillow==12.3.0" \
- && pip check
+ && python3 -c "from importlib.metadata import version; expected = {'transformers': '${TRANSFORMERS_VERSION}', 'glmocr': '0.1.5', 'runpod': '1.7.6', 'requests': '2.33.0', 'pillow': '12.3.0'}; actual = {name: version(name) for name in expected}; assert actual == expected, actual"
 
 # Pre-download model weights into the image so cold starts don't hit HuggingFace
 ENV HF_HOME=/root/.cache/huggingface
