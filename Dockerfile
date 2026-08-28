@@ -22,6 +22,8 @@ RUN pip uninstall -y transformers || true \
 ENV HF_HOME=/root/.cache/huggingface
 ENV GLM_OCR_MODEL_REVISION=${GLM_OCR_MODEL_REVISION}
 RUN python3 -c "import os; from huggingface_hub import snapshot_download; snapshot_download('zai-org/GLM-OCR', revision=os.environ['GLM_OCR_MODEL_REVISION'])"
+ENV MODEL_PATH=/models/glm-ocr
+RUN python3 -c "import os; from pathlib import Path; from huggingface_hub import snapshot_download; target = Path(os.environ['MODEL_PATH']); target.parent.mkdir(parents=True, exist_ok=True); target.symlink_to(snapshot_download('zai-org/GLM-OCR', revision=os.environ['GLM_OCR_MODEL_REVISION'], local_files_only=True), target_is_directory=True)"
 ENV HF_HUB_OFFLINE=1
 
 # Persist vLLM compile cache on network volume to speed up cold starts

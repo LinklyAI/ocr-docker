@@ -25,6 +25,7 @@ log = logging.getLogger("handler")
 VLLM_PORT = 8080
 VLLM_URL = f"http://localhost:{VLLM_PORT}"
 MODEL_NAME = os.getenv("MODEL_NAME", "zai-org/GLM-OCR")
+MODEL_PATH = os.getenv("MODEL_PATH", MODEL_NAME)
 MAX_MODEL_LEN = os.getenv("MAX_MODEL_LEN", "16384")
 GPU_MEMORY_UTILIZATION = os.getenv("GPU_MEMORY_UTILIZATION", "0.95")
 SPECULATIVE_CONFIG = os.getenv(
@@ -58,7 +59,8 @@ def stream_output(pipe):
 def start_vllm():
     """Start vLLM as a background process with log forwarding."""
     cmd = [
-        "vllm", "serve", MODEL_NAME,
+        "vllm", "serve", MODEL_PATH,
+        "--served-model-name", MODEL_NAME,
         "--allowed-local-media-path", "/",
         "--port", str(VLLM_PORT),
         "--max-model-len", MAX_MODEL_LEN,
