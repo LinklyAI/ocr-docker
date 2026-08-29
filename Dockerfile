@@ -1,4 +1,4 @@
-FROM vllm/vllm-openai:v0.25.1
+FROM vllm/vllm-openai:v0.25.1-cu129-ubuntu2404
 
 ARG TRANSFORMERS_VERSION=5.13.0
 ARG GLM_OCR_COMMIT=cef4d0ea120d1741f5cefe8985eee45f6c8eff1d
