@@ -32,14 +32,14 @@ ENV MAX_MODEL_LEN=16384
 ENV GPU_MEMORY_UTILIZATION=0.95
 ENV SPECULATIVE_CONFIG='{"method":"ngram","num_speculative_tokens":1,"prompt_lookup_max":1,"prompt_lookup_min":1}'
 ENV ENFORCE_EAGER=0
-ENV MAX_IMAGE_SIDE=2000
+ENV MAX_IMAGE_SIDE=1900
 ENV USE_GLMOCR_SDK=1
 
 # Force glm-ocr SDK to use local vLLM instead of MaaS.
 RUN mkdir -p /root/.config/glm-ocr \
  && printf "pipeline:\n  maas:\n    enabled: false\n  ocr_api:\n    api_host: localhost\n    api_port: 8080\n" > /root/.config/glm-ocr/config.yaml
 
-COPY handler.py /handler.py
+COPY handler.py image_input.py vllm_command.py /
 
 EXPOSE 8080
 

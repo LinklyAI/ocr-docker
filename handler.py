@@ -19,6 +19,9 @@ import requests
 import runpod
 from PIL import Image
 
+from image_input import decode_data_url
+from vllm_command import build_vllm_command
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("handler")
 
@@ -36,9 +39,11 @@ SPECULATIVE_CONFIG = os.getenv(
     ),
 )
 ENFORCE_EAGER = os.getenv("ENFORCE_EAGER", "0").lower() in {"1", "true", "yes"}
-MAX_IMAGE_SIDE = int(os.getenv("MAX_IMAGE_SIDE", "2000"))
+MAX_IMAGE_SIDE = int(os.getenv("MAX_IMAGE_SIDE", "1900"))
 USE_GLMOCR_SDK = os.getenv("USE_GLMOCR_SDK", "1").lower() in {"1", "true", "yes"}
 CONCURRENCY = max(1, int(os.getenv("CONCURRENCY", "1")))
+MAX_NUM_BATCHED_TOKENS = os.getenv("MAX_NUM_BATCHED_TOKENS", "").strip()
+MAX_NUM_SEQS = os.getenv("MAX_NUM_SEQS", "").strip()
 
 OCR_PARSER = None
 
@@ -58,23 +63,27 @@ def stream_output(pipe):
 
 def start_vllm():
     """Start vLLM as a background process with log forwarding."""
-    cmd = [
-        "vllm", "serve", MODEL_PATH,
-        "--served-model-name", MODEL_NAME,
-        "--allowed-local-media-path", "/",
-        "--port", str(VLLM_PORT),
-        "--max-model-len", MAX_MODEL_LEN,
-        "--gpu-memory-utilization", GPU_MEMORY_UTILIZATION,
-        "--speculative-config", SPECULATIVE_CONFIG,
-    ]
-    if ENFORCE_EAGER:
-        cmd.append("--enforce-eager")
+    cmd = build_vllm_command(
+        model_path=MODEL_PATH,
+        model_name=MODEL_NAME,
+        port=VLLM_PORT,
+        max_model_len=MAX_MODEL_LEN,
+        gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
+        speculative_config=SPECULATIVE_CONFIG,
+        enforce_eager=ENFORCE_EAGER,
+        max_num_batched_tokens=MAX_NUM_BATCHED_TOKENS,
+        max_num_seqs=MAX_NUM_SEQS,
+    )
 
     log.info("Starting vLLM: %s", " ".join(cmd))
     log.info(
-        "vLLM context window configured to %s tokens (gpu_memory_utilization=%s)",
+        "vLLM configured with max_model_len=%s gpu_memory_utilization=%s "
+        "speculative=%s max_num_batched_tokens=%s max_num_seqs=%s",
         MAX_MODEL_LEN,
         GPU_MEMORY_UTILIZATION,
+        bool(SPECULATIVE_CONFIG.strip()),
+        MAX_NUM_BATCHED_TOKENS or "default",
+        MAX_NUM_SEQS or "default",
     )
     process = subprocess.Popen(
         cmd,
@@ -196,6 +205,9 @@ def _extract_job_image_and_prompt(job_input):
 def _read_image_bytes(url):
     """Read image bytes from http(s), file://, or absolute local path."""
     parsed = urlparse(url)
+    if parsed.scheme == "data":
+        return decode_data_url(url)
+
     if parsed.scheme in {"http", "https"}:
         resp = requests.get(url, timeout=30)
         resp.raise_for_status()
