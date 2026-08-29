@@ -18,8 +18,11 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 
 def open_json(request: urllib.request.Request, attempts: int = 5) -> dict[str, Any]:
@@ -106,11 +109,45 @@ def extract_content(output: Any) -> str:
     return ""
 
 
-def make_input(dataset_dir: Path, sample: dict[str, Any], max_tokens: int) -> dict[str, Any]:
-    asset_path = dataset_dir / sample["asset"]
+def prepare_image_payload(asset_path: Path, max_image_side: int) -> tuple[str, bytes]:
+    raw = asset_path.read_bytes()
     mime = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
-    data = base64.b64encode(asset_path.read_bytes()).decode("ascii")
-    return {
+    if max_image_side <= 0:
+        return mime, raw
+
+    with Image.open(BytesIO(raw)) as image:
+        width, height = image.size
+        longest = max(width, height)
+        if longest <= max_image_side:
+            return mime, raw
+
+        ratio = max_image_side / float(longest)
+        resized = image.resize(
+            (max(1, int(width * ratio)), max(1, int(height * ratio))),
+            Image.Resampling.LANCZOS,
+        )
+        output = BytesIO()
+        if "A" in resized.getbands():
+            resized.save(output, format="PNG", optimize=True)
+            mime = "image/png"
+        else:
+            if resized.mode not in {"RGB", "L"}:
+                resized = resized.convert("RGB")
+            resized.save(output, format="JPEG", quality=90, optimize=True)
+            mime = "image/jpeg"
+        return mime, output.getvalue()
+
+
+def make_input(
+    dataset_dir: Path,
+    sample: dict[str, Any],
+    max_tokens: int,
+    max_image_side: int = 0,
+) -> tuple[dict[str, Any], str]:
+    asset_path = dataset_dir / sample["asset"]
+    mime, image_bytes = prepare_image_payload(asset_path, max_image_side)
+    data = base64.b64encode(image_bytes).decode("ascii")
+    request = {
         "model": "zai-org/GLM-OCR",
         "messages": [
             {
@@ -124,6 +161,7 @@ def make_input(dataset_dir: Path, sample: dict[str, Any], max_tokens: int) -> di
         "temperature": 0.0,
         "max_tokens": max_tokens,
     }
+    return request, hashlib.sha256(image_bytes).hexdigest()
 
 
 def make_url_input(url: str, max_tokens: int) -> dict[str, Any]:
@@ -244,6 +282,7 @@ def main() -> None:
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--max-image-side", type=int, default=0)
     parser.add_argument("--poll-interval", type=float, default=0.2)
     parser.add_argument("--price-per-hour", type=float, default=1.10)
     parser.add_argument("--warmup-requests", type=int, default=4)
@@ -259,10 +298,17 @@ def main() -> None:
         raise SystemExit("RUNPOD_API_KEY is required")
 
     manifest = json.loads((args.dataset_dir / "manifest.json").read_text(encoding="utf-8"))
-    prepared_inputs = {
-        sample["id"]: make_input(args.dataset_dir, sample, args.max_tokens)
+    prepared = {
+        sample["id"]: make_input(
+            args.dataset_dir,
+            sample,
+            args.max_tokens,
+            args.max_image_side,
+        )
         for sample in manifest["samples"]
     }
+    prepared_inputs = {sample_id: value[0] for sample_id, value in prepared.items()}
+    request_sha256 = {sample_id: value[1] for sample_id, value in prepared.items()}
 
     rows: list[dict[str, Any]] = []
     started_at = datetime.now(timezone.utc).isoformat()
@@ -337,6 +383,7 @@ def main() -> None:
             "rounds": args.rounds,
             "client_concurrency": args.concurrency,
             "max_tokens": args.max_tokens,
+            "max_image_side": args.max_image_side,
             "price_per_hour_usd": args.price_per_hour,
             "warmup_requests": args.warmup_requests,
             "warmup_url": args.warmup_url,
@@ -348,6 +395,7 @@ def main() -> None:
                 sample["id"]: file_sha256(args.dataset_dir / sample["asset"])
                 for sample in manifest["samples"]
             },
+            "request_image_sha256": request_sha256,
         },
         "summary": {
             "overall": aggregate(rows, args.price_per_hour),

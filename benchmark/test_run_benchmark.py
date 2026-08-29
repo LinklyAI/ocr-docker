@@ -1,6 +1,11 @@
 import unittest
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from run_benchmark import aggregate
+from PIL import Image
+
+from run_benchmark import aggregate, prepare_image_payload
 
 
 class AggregateTest(unittest.TestCase):
@@ -35,6 +40,19 @@ class AggregateTest(unittest.TestCase):
         self.assertAlmostEqual(
             result["execution_window_cost_per_page_usd"], 3 / 3600 / 2
         )
+
+
+class PrepareImagePayloadTest(unittest.TestCase):
+    def test_resizes_long_side_and_reports_matching_mime(self):
+        with TemporaryDirectory() as directory:
+            source = Path(directory) / "source.png"
+            Image.new("RGB", (400, 200), "white").save(source)
+
+            mime, payload = prepare_image_payload(source, max_image_side=100)
+
+            self.assertEqual(mime, "image/jpeg")
+            with Image.open(BytesIO(payload)) as resized:
+                self.assertEqual(resized.size, (100, 50))
 
 
 if __name__ == "__main__":
