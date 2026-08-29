@@ -305,29 +305,47 @@ def _resize_image_to_file_path(image_bytes, max_side):
 def _prepare_image_for_sdk(image_ref, job_id):
     """Return image path/url for SDK parse and list of temp files to clean up."""
     cleanup_paths = []
-    if MAX_IMAGE_SIDE <= 0:
-        return image_ref, cleanup_paths
-
     try:
         image_bytes = _read_image_bytes(image_ref)
-        resized_path, old_size, new_size = _resize_image_to_file_path(
-            image_bytes, MAX_IMAGE_SIDE
-        )
-        if resized_path is None:
-            return image_ref, cleanup_paths
+        if MAX_IMAGE_SIDE > 0:
+            resized_path, old_size, new_size = _resize_image_to_file_path(
+                image_bytes, MAX_IMAGE_SIDE
+            )
+            if resized_path is not None:
+                cleanup_paths.append(resized_path)
+                log.info(
+                    "Job %s: SDK image resized from %sx%s to %sx%s",
+                    job_id,
+                    old_size[0],
+                    old_size[1],
+                    new_size[0],
+                    new_size[1],
+                )
+                return resized_path, cleanup_paths
 
-        cleanup_paths.append(resized_path)
-        log.info(
-            "Job %s: SDK image resized from %sx%s to %sx%s",
-            job_id,
-            old_size[0],
-            old_size[1],
-            new_size[0],
-            new_size[1],
+        # The glm-ocr SDK treats strings as filesystem paths. Materialize URL
+        # and data-URL inputs even when no resize is needed so they are not
+        # misinterpreted as paths such as `/workspace/https:/...`.
+        with Image.open(BytesIO(image_bytes)) as image:
+            suffix = {
+                "JPEG": ".jpg",
+                "PNG": ".png",
+                "WEBP": ".webp",
+                "TIFF": ".tiff",
+                "BMP": ".bmp",
+            }.get((image.format or "").upper(), ".png")
+        tmp = tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=suffix,
+            prefix="glmocr_",
+            delete=False,
         )
-        return resized_path, cleanup_paths
+        with tmp:
+            tmp.write(image_bytes)
+        cleanup_paths.append(tmp.name)
+        return tmp.name, cleanup_paths
     except Exception as exc:
-        log.warning("Job %s: SDK image resize skipped (%s)", job_id, exc)
+        log.warning("Job %s: SDK image preparation skipped (%s)", job_id, exc)
         return image_ref, cleanup_paths
 
 
