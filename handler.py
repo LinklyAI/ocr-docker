@@ -20,7 +20,7 @@ import runpod
 from PIL import Image
 
 from image_input import decode_data_url
-from vllm_command import build_vllm_command
+from vllm_command import build_vllm_command, speculative_decoding_enabled
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("handler")
@@ -81,7 +81,7 @@ def start_vllm():
         "speculative=%s max_num_batched_tokens=%s max_num_seqs=%s",
         MAX_MODEL_LEN,
         GPU_MEMORY_UTILIZATION,
-        bool(SPECULATIVE_CONFIG.strip()),
+        speculative_decoding_enabled(SPECULATIVE_CONFIG),
         MAX_NUM_BATCHED_TOKENS or "default",
         MAX_NUM_SEQS or "default",
     )

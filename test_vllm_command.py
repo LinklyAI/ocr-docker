@@ -26,6 +26,12 @@ class BuildVllmCommandTest(unittest.TestCase):
         command = self.build(speculative_config="")
         self.assertNotIn("--speculative-config", command)
 
+    def test_omits_speculative_config_for_disabled_sentinel(self):
+        for value in ("none", "OFF", " disabled "):
+            with self.subTest(value=value):
+                command = self.build(speculative_config=value)
+                self.assertNotIn("--speculative-config", command)
+
     def test_adds_batching_overrides(self):
         command = self.build(max_num_batched_tokens="8192", max_num_seqs="4")
         self.assertEqual(command[command.index("--max-num-batched-tokens") + 1], "8192")

@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 
+DISABLED_SPECULATIVE_VALUES = {"", "none", "off", "disabled"}
+
+
+def speculative_decoding_enabled(value: str) -> bool:
+    return value.strip().lower() not in DISABLED_SPECULATIVE_VALUES
+
+
 def build_vllm_command(
     *,
     model_path: str,
@@ -30,7 +37,7 @@ def build_vllm_command(
         "--gpu-memory-utilization",
         gpu_memory_utilization,
     ]
-    if speculative_config.strip():
+    if speculative_decoding_enabled(speculative_config):
         command.extend(["--speculative-config", speculative_config])
     if enforce_eager:
         command.append("--enforce-eager")
