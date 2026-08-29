@@ -1,30 +1,32 @@
 # GLM-OCR / Runpod RTX 4090 部署评测（一页纸）
 
-**结论：可以投入低流量试运行。** 保持单张 RTX 4090 24 GB、`workersMin=0`、`workersMax=1`，handler 并发设为 **8**，由现有任务队列把瞬时 10+ 用户请求排队并凑批；进入 Runpod 前将每页长边缩到 **1900 px**。这是本轮固定显卡条件下的最低稳态单页成本方案；如果将 P95 延迟优先于成本，则把 handler 并发降到 4。
+**结论：自部署解决并发和可控性，不解决成本。** 对完全相同的 12 页、相同 1900 px 请求字节分别实测 3 轮后，智谱 GLM-OCR MaaS 的图片单价约为 Runpod 稳态单价的 **1/12**，文档单价约为 **1/7**。当前流量很低时，建议现有任务队列优先使用智谱的 2 并发额度；不要继续扩号池。Runpod 保留为可控容量方案，只有当并发、可用性或数据路径的价值高于 7–12 倍边际成本及冷启动成本时才启用。
 
-## 决策数据
+## 同文件逐页实测
 
-Runpod 当前公示 RTX 4090 Serverless 价格为 **$1.10/小时**，并按 worker 从启动到完全停止的秒数计费（[官方价格与计费口径](https://www.runpod.io/product/serverless)）。以下单价按用户要求，仅用 Runpod 返回的 `delayTime + executionTime` 合并 GPU execution window 换算，不含冷启动：
+正式组共 36 个请求，智谱与 Runpod 均为 36/36 成功。每种内容 6 页 × 3 轮；12 个请求图 SHA-256 逐个一致。智谱按接口实际返回的 `total_tokens` 和官方输入输出同价 **0.2 元/百万 Tokens** 计算（[官方模型价格](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-ocr)、[响应 usage 字段](https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E6%96%87%E6%A1%A3%E8%A7%A3%E6%9E%90)）。Runpod 按 RTX 4090 Serverless **$1.10/小时**及 GPU execution window 计算（[官方价格](https://www.runpod.io/product/serverless)）；统一人民币使用 2026-08-28 美元兑人民币中间价 **6.7811**（[中国外汇交易中心授权数据](https://www.news.cn/20260828/8ded7ca354aa4c95b9a24a3cdd0b4fb8/c.html)）。
 
-| 独立队列 | 正式测试 | Mean / P95 executionTime | 吞吐 | 稳态单价 | 每千页 |
+| 每页 | 智谱实际 Tokens | 智谱 MaaS | Runpod 稳态 | Runpod / 智谱 | 每千页：智谱 / Runpod |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 图片 OCR | 6 个样本 × 3 轮，18/18 成功 | 2.043 s / 3.916 s | 1.294 页/s | **$0.000236/页** | **$0.236** |
-| 文档 OCR | 6 个样本 × 3 轮，18/18 成功 | 5.400 s / 7.447 s | 0.768 页/s | **$0.000398/页** | **$0.398** |
+| 图片 OCR | 666.0 | **¥0.000133** | ¥0.001601（$0.000236） | **12.02×** | ¥0.133 / ¥1.601 |
+| 文档 OCR | 1,926.3 | **¥0.000385** | ¥0.002699（$0.000398） | **7.00×** | ¥0.385 / ¥2.699 |
 
-并发阶梯的同口径结果：并发 2 为 2.560/4.694 秒、$0.000553/页；并发 4 为 2.580/4.697 秒、$0.000348/页；并发 8 为 3.839/6.242 秒、$0.000264/页（Mean/P95、混合队列）。**4 是延迟 Pareto 点，8 是成本/吞吐 Pareto 点。**
+以上 Runpod 已是最有利的稳态口径，尚未计入实测 90–120 秒冷启动。每次 scale-to-zero 后重启约再付 ¥0.186–0.249：10 页一批会额外增加 ¥0.0186–0.0249/页，100 页一批增加 ¥0.00186–0.00249/页。因为 Runpod 的稳态边际成本本身已经更高，所以增加批量只能摊薄冷启动，不能反超智谱单价。
 
-## 已验证的优化与否决项
+## 速度、质量与部署选择
 
-- 依赖已固定为 `vllm/vllm-openai:v0.26.0`、Transformers 5.13.0、固定 GLM-OCR 源码与模型 revision，消除 nightly/main 漂移。
-- ngram4 相对同镜像 ngram1 将 Mean/P95 约降低 6.8%，单位成本基本相同；保留 ngram4。
-- 关闭 speculative decoding 虽启用 V2 Model Runner/异步调度，但两次冷启动均超过 Runpod 就绪窗口，新增 23 次失败；否决。
-- `max_num_batched_tokens=8192` + `max_num_seqs=4` 使 Mean/P95/成本约恶化 29.6%/59.8%/16.7%；保留 vLLM 默认 batching。
-- worker 内处理原图时，超长截图在 CPU 并发解码/缩放阶段耗时约 5.5 秒，图片 P95 升至 10.18 秒；1900 px 预处理必须前移到现有任务队列，handler 只保留兜底。
+| 类型 | 智谱墙钟 Mean / P95 | Runpod executionTime Mean / P95 | 智谱 / Runpod 相似度均值 |
+| --- | ---: | ---: | ---: |
+| 图片 | 1.441 / 3.661 秒 | 2.043 / 3.916 秒 | 0.6708 / 0.8398 |
+| 文档 | 2.096 / 4.663 秒 | 5.400 / 7.447 秒 | 0.8739 / 0.9838 |
 
-## 上线口径与风险
+延迟口径不同：智谱是含网络的客户端墙钟，Runpod 是平台返回的纯执行时间，不能当作严格同口径性能排名；但可以确认智谱在 1–2 个并发下并不慢，问题是硬并发上限导致后续请求排队。相似度使用同一份 ground truth，但智谱布局解析 API 不开放自定义 prompt，而 Runpod 按样本使用 `Text Recognition:` / `Formula Recognition:`，因此质量值适合风险提示和版本回归，不是最终准确率裁决。
 
-当前可用 HTTP 队列端点为 `POST https://api.runpod.ai/v2/czu0b186rffoss/run`（异步）或 `/runsync`。线上配置已留在 RTX 4090、并发 8、ngram4、默认 batching，队列为空且最终正式组全部成功。
+部署决策保持单张 RTX 4090 24 GB、handler 并发 **8**、任务队列预缩放长边到 **1900 px**、`workersMin=0`、`workersMax=1`。如果选择 Runpod，图片稳态吞吐为 1.294 页/秒，文档为 0.768 页/秒；混合并发阶梯中并发 4 是延迟 Pareto 点，并发 8 是吞吐/成本 Pareto 点。若需要无冷启动的 10 并发，必须接受 Active Worker 的持续账单；在当前低流量下不建议。
 
-稳态单价不是低流量真实账单：实测自定义镜像冷启动约 **90–120 秒**，按官方“worker 启动到停止”计费，每次冷启动约增加 **$0.0275–$0.0367/批**。10 页一批时仅冷启动就增加约 $0.00275–$0.00367/页；100 页一批降为 $0.000275–$0.000367/页。因此保持 scale-to-zero 的前提是任务队列凑批；若用户不能接受约两分钟首批等待，再评估 Active Worker，而不是继续微调 executionTime。
+## 已验证的工程边界
 
-质量相似度：文档均值 0.9838、最低 0.9196；图片均值 0.8398，其中最低 0.2682 来自 ground truth 本身截断的超长截图，只可用于版本间回归比较，不代表绝对准确率。下一阶段应扩充人工校验 ground truth，再做按文档长度/语言分层的准确率验收。
+- 依赖已固定为 `vllm/vllm-openai:v0.26.0`、Transformers 5.13.0、固定 GLM-OCR 源码与模型 revision，避免 nightly/main 漂移。
+- 保留 ngram4 和 vLLM 默认 batching；关闭 speculative decoding以及手工限制 batch 均已实测失败或退化。
+- 现有异步 HTTP 端点为 `POST https://api.runpod.ai/v2/czu0b186rffoss/run`；密钥只通过环境变量传入。
+- 当前建议是“智谱低并发主路由 + Runpod 可控容量”，不是账号池。Runpod 冷启动较长，故应由任务队列按积压量提前预热，而不能把 scale-to-zero 当作即时故障切换。
