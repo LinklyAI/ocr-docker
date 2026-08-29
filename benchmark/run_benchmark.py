@@ -273,6 +273,13 @@ def aggregate(rows: list[dict[str, Any]], price_per_hour: float) -> dict[str, An
     }
 
 
+def select_samples(samples: list[dict[str, Any]], kind: str | None) -> list[dict[str, Any]]:
+    selected = samples if kind is None else [sample for sample in samples if sample["kind"] == kind]
+    if not selected:
+        raise ValueError(f"No benchmark samples found for kind={kind!r}")
+    return selected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint-id", required=True)
@@ -283,6 +290,7 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--max-image-side", type=int, default=0)
+    parser.add_argument("--kind", choices=("image", "document"))
     parser.add_argument("--poll-interval", type=float, default=0.2)
     parser.add_argument("--price-per-hour", type=float, default=1.10)
     parser.add_argument("--warmup-requests", type=int, default=4)
@@ -298,6 +306,7 @@ def main() -> None:
         raise SystemExit("RUNPOD_API_KEY is required")
 
     manifest = json.loads((args.dataset_dir / "manifest.json").read_text(encoding="utf-8"))
+    manifest["samples"] = select_samples(manifest["samples"], args.kind)
     prepared = {
         sample["id"]: make_input(
             args.dataset_dir,
@@ -384,6 +393,7 @@ def main() -> None:
             "client_concurrency": args.concurrency,
             "max_tokens": args.max_tokens,
             "max_image_side": args.max_image_side,
+            "kind": args.kind,
             "price_per_hour_usd": args.price_per_hour,
             "warmup_requests": args.warmup_requests,
             "warmup_url": args.warmup_url,

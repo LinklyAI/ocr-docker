@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
-from run_benchmark import aggregate, prepare_image_payload
+from run_benchmark import aggregate, prepare_image_payload, select_samples
 
 
 class AggregateTest(unittest.TestCase):
@@ -53,6 +53,21 @@ class PrepareImagePayloadTest(unittest.TestCase):
             self.assertEqual(mime, "image/jpeg")
             with Image.open(BytesIO(payload)) as resized:
                 self.assertEqual(resized.size, (100, 50))
+
+
+class SelectSamplesTest(unittest.TestCase):
+    def test_filters_samples_by_kind(self):
+        samples = [
+            {"id": "image-1", "kind": "image"},
+            {"id": "document-1", "kind": "document"},
+        ]
+
+        self.assertEqual(select_samples(samples, "image"), [samples[0]])
+        self.assertEqual(select_samples(samples, None), samples)
+
+    def test_rejects_empty_selection(self):
+        with self.assertRaisesRegex(ValueError, "kind='document'"):
+            select_samples([{"id": "image-1", "kind": "image"}], "document")
 
 
 if __name__ == "__main__":
