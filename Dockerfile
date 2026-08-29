@@ -1,8 +1,9 @@
-FROM vllm/vllm-openai:v0.26.0
+FROM vllm/vllm-openai:v0.25.1
 
 ARG TRANSFORMERS_VERSION=5.13.0
 ARG GLM_OCR_COMMIT=cef4d0ea120d1741f5cefe8985eee45f6c8eff1d
 ARG GLM_OCR_MODEL_REVISION=ca5d8b3e287e52589e37c28385d9655ee4372f9d
+ARG GLM_OCR_LAYOUT_MODEL_REVISION=f6f3f2b438702c53e94cfd535c2ea05aafb7985f
 
 # git is needed for pip install from GitHub
 RUN apt-get update && apt-get install -y --no-install-recommends git \
@@ -16,14 +17,21 @@ RUN pip uninstall -y transformers || true \
       "runpod==1.7.6" \
       "requests==2.33.0" \
       "pillow==12.3.0" \
- && python3 -c "from importlib.metadata import version; expected = {'transformers': '${TRANSFORMERS_VERSION}', 'glmocr': '0.1.5', 'runpod': '1.7.6', 'requests': '2.33.0', 'pillow': '12.3.0'}; actual = {name: version(name) for name in expected}; assert actual == expected, actual"
+      "opencv-python-headless==4.11.0.86" \
+      "sentencepiece==0.2.1" \
+      "accelerate==1.13.0" \
+ && python3 -c "from importlib.metadata import version; expected = {'transformers': '${TRANSFORMERS_VERSION}', 'glmocr': '0.1.5', 'runpod': '1.7.6', 'requests': '2.33.0', 'pillow': '12.3.0', 'opencv-python-headless': '4.11.0.86', 'sentencepiece': '0.2.1', 'accelerate': '1.13.0'}; actual = {name: version(name) for name in expected}; assert actual == expected, actual"
 
 # Pre-download model weights into the image so cold starts don't hit HuggingFace
 ENV HF_HOME=/root/.cache/huggingface
 ENV GLM_OCR_MODEL_REVISION=${GLM_OCR_MODEL_REVISION}
+ENV GLM_OCR_LAYOUT_MODEL_REVISION=${GLM_OCR_LAYOUT_MODEL_REVISION}
 RUN python3 -c "import os; from huggingface_hub import snapshot_download; snapshot_download('zai-org/GLM-OCR', revision=os.environ['GLM_OCR_MODEL_REVISION'])"
+RUN python3 -c "import os; from huggingface_hub import snapshot_download; snapshot_download('PaddlePaddle/PP-DocLayoutV3_safetensors', revision=os.environ['GLM_OCR_LAYOUT_MODEL_REVISION'])"
 ENV MODEL_PATH=/models/glm-ocr
 RUN python3 -c "import os; from pathlib import Path; from huggingface_hub import snapshot_download; target = Path(os.environ['MODEL_PATH']); target.parent.mkdir(parents=True, exist_ok=True); target.symlink_to(snapshot_download('zai-org/GLM-OCR', revision=os.environ['GLM_OCR_MODEL_REVISION'], local_files_only=True), target_is_directory=True)"
+ENV GLM_OCR_LAYOUT_MODEL_PATH=/models/pp-doclayout-v3
+RUN python3 -c "import os; from pathlib import Path; from huggingface_hub import snapshot_download; target = Path(os.environ['GLM_OCR_LAYOUT_MODEL_PATH']); target.parent.mkdir(parents=True, exist_ok=True); target.symlink_to(snapshot_download('PaddlePaddle/PP-DocLayoutV3_safetensors', revision=os.environ['GLM_OCR_LAYOUT_MODEL_REVISION'], local_files_only=True), target_is_directory=True)"
 ENV HF_HUB_OFFLINE=1
 
 # Persist vLLM compile cache on network volume to speed up cold starts
@@ -31,13 +39,14 @@ ENV VLLM_CACHE_ROOT=/runpod-volume/vllm-cache
 ENV MAX_MODEL_LEN=16384
 ENV GPU_MEMORY_UTILIZATION=0.95
 ENV SPECULATIVE_CONFIG='{"method":"ngram","num_speculative_tokens":1,"prompt_lookup_max":1,"prompt_lookup_min":1}'
+ENV QUANTIZATION=""
 ENV ENFORCE_EAGER=0
 ENV MAX_IMAGE_SIDE=1900
 ENV USE_GLMOCR_SDK=1
 
 # Force glm-ocr SDK to use local vLLM instead of MaaS.
 RUN mkdir -p /root/.config/glm-ocr \
- && printf "pipeline:\n  maas:\n    enabled: false\n  ocr_api:\n    api_host: localhost\n    api_port: 8080\n" > /root/.config/glm-ocr/config.yaml
+ && printf "pipeline:\n  maas:\n    enabled: false\n  ocr_api:\n    api_host: localhost\n    api_port: 8080\n  layout:\n    model_dir: /models/pp-doclayout-v3\n" > /root/.config/glm-ocr/config.yaml
 
 COPY handler.py image_input.py vllm_command.py /
 

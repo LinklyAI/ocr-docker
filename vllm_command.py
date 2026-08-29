@@ -18,6 +18,7 @@ def build_vllm_command(
     max_model_len: str,
     gpu_memory_utilization: str,
     speculative_config: str,
+    quantization: str,
     enforce_eager: bool,
     max_num_batched_tokens: str = "",
     max_num_seqs: str = "",
@@ -39,6 +40,8 @@ def build_vllm_command(
     ]
     if speculative_decoding_enabled(speculative_config):
         command.extend(["--speculative-config", speculative_config])
+    if quantization:
+        command.extend(["--quantization", quantization])
     if enforce_eager:
         command.append("--enforce-eager")
     if max_num_batched_tokens:

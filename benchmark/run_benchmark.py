@@ -109,6 +109,44 @@ def extract_content(output: Any) -> str:
     return ""
 
 
+def extract_usage(output: Any) -> dict[str, int | None]:
+    """Extract OpenAI-compatible token usage when the response exposes it."""
+    usage = output.get("usage") if isinstance(output, dict) else None
+    if not isinstance(usage, dict):
+        usage = {}
+    return {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "total_tokens": usage.get("total_tokens"),
+    }
+
+
+def extract_region_count(output: Any) -> int | None:
+    """Count SDK layout regions; return None for the full-page path."""
+    if not isinstance(output, dict) or "layout_json" not in output:
+        return None
+    layout = output.get("layout_json")
+    if not isinstance(layout, list):
+        return 0
+
+    count = 0
+    for page in layout:
+        if isinstance(page, list):
+            count += len(page)
+        elif isinstance(page, dict):
+            # Be tolerant of SDK/server variants that wrap page regions.
+            regions = next(
+                (
+                    page[key]
+                    for key in ("regions", "layout_details", "blocks")
+                    if isinstance(page.get(key), list)
+                ),
+                None,
+            )
+            count += len(regions) if regions is not None else int("bbox_2d" in page)
+    return count
+
+
 def prepare_image_payload(asset_path: Path, max_image_side: int) -> tuple[str, bytes]:
     raw = asset_path.read_bytes()
     mime = mimetypes.guess_type(asset_path.name)[0] or "application/octet-stream"
@@ -205,7 +243,9 @@ def run_job(
         time.sleep(poll_interval)
 
     finished_at = time.time()
-    content = extract_content(status.get("output"))
+    output = status.get("output")
+    content = extract_content(output)
+    usage = extract_usage(output)
     return {
         "sample_id": sample["id"],
         "kind": sample["kind"],
@@ -218,6 +258,8 @@ def run_job(
         "execution_time_ms": status.get("executionTime"),
         "content": content,
         "content_chars": len(content),
+        **usage,
+        "region_count": extract_region_count(output),
         "quality_similarity": round(similarity(sample["expected_text"], content), 6),
         "error": status.get("error"),
     }
@@ -227,6 +269,14 @@ def aggregate(rows: list[dict[str, Any]], price_per_hour: float) -> dict[str, An
     execution = [float(row["execution_time_ms"]) for row in rows if row.get("execution_time_ms") is not None]
     delays = [float(row["delay_time_ms"]) for row in rows if row.get("delay_time_ms") is not None]
     quality = [float(row["quality_similarity"]) for row in rows if row["status"] == "COMPLETED"]
+    prompt_tokens = [int(row["prompt_tokens"]) for row in rows if row.get("prompt_tokens") is not None]
+    completion_tokens = [
+        int(row["completion_tokens"])
+        for row in rows
+        if row.get("completion_tokens") is not None
+    ]
+    total_tokens = [int(row["total_tokens"]) for row in rows if row.get("total_tokens") is not None]
+    region_counts = [int(row["region_count"]) for row in rows if row.get("region_count") is not None]
     intervals = sorted(
         (
             row["submitted_at"] + float(row["delay_time_ms"] or 0) / 1000,
@@ -263,6 +313,22 @@ def aggregate(rows: list[dict[str, Any]], price_per_hour: float) -> dict[str, An
         "quality_similarity": {
             "mean": statistics.fmean(quality) if quality else None,
             "min": min(quality) if quality else None,
+        },
+        "prompt_tokens": {
+            "mean": statistics.fmean(prompt_tokens) if prompt_tokens else None,
+            "sum": sum(prompt_tokens),
+        },
+        "completion_tokens": {
+            "mean": statistics.fmean(completion_tokens) if completion_tokens else None,
+            "sum": sum(completion_tokens),
+        },
+        "total_tokens": {
+            "mean": statistics.fmean(total_tokens) if total_tokens else None,
+            "sum": sum(total_tokens),
+        },
+        "region_count": {
+            "mean": statistics.fmean(region_counts) if region_counts else None,
+            "sum": sum(region_counts),
         },
         "execution_window_union_s": execution_window_s,
         "execution_window_source": "runpod_delay_time_plus_execution_time",

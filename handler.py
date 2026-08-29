@@ -38,6 +38,7 @@ SPECULATIVE_CONFIG = os.getenv(
         '"prompt_lookup_max": 1, "prompt_lookup_min": 1}'
     ),
 )
+QUANTIZATION = os.getenv("QUANTIZATION", "").strip()
 ENFORCE_EAGER = os.getenv("ENFORCE_EAGER", "0").lower() in {"1", "true", "yes"}
 MAX_IMAGE_SIDE = int(os.getenv("MAX_IMAGE_SIDE", "1900"))
 USE_GLMOCR_SDK = os.getenv("USE_GLMOCR_SDK", "1").lower() in {"1", "true", "yes"}
@@ -70,6 +71,7 @@ def start_vllm():
         max_model_len=MAX_MODEL_LEN,
         gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
         speculative_config=SPECULATIVE_CONFIG,
+        quantization=QUANTIZATION,
         enforce_eager=ENFORCE_EAGER,
         max_num_batched_tokens=MAX_NUM_BATCHED_TOKENS,
         max_num_seqs=MAX_NUM_SEQS,
@@ -78,10 +80,11 @@ def start_vllm():
     log.info("Starting vLLM: %s", " ".join(cmd))
     log.info(
         "vLLM configured with max_model_len=%s gpu_memory_utilization=%s "
-        "speculative=%s max_num_batched_tokens=%s max_num_seqs=%s",
+        "speculative=%s quantization=%s max_num_batched_tokens=%s max_num_seqs=%s",
         MAX_MODEL_LEN,
         GPU_MEMORY_UTILIZATION,
         speculative_decoding_enabled(SPECULATIVE_CONFIG),
+        QUANTIZATION or "none",
         MAX_NUM_BATCHED_TOKENS or "default",
         MAX_NUM_SEQS or "default",
     )
@@ -128,8 +131,14 @@ def init_glmocr_sdk():
         return None
 
     try:
-        parser = GlmOcr()
-        log.info("GLM-OCR SDK initialized")
+        parser = GlmOcr(
+            config_path="/root/.config/glm-ocr/config.yaml",
+            mode="selfhosted",
+            ocr_api_host="localhost",
+            ocr_api_port=VLLM_PORT,
+            layout_device=os.getenv("GLMOCR_LAYOUT_DEVICE") or None,
+        )
+        log.info("GLM-OCR SDK initialized in self-hosted mode")
         return parser
     except Exception as exc:
         log.warning("Failed to initialize glm-ocr SDK: %s", exc)
@@ -326,14 +335,21 @@ def _normalize_sdk_result(result):
     """Normalize glm-ocr SDK output into stable response keys."""
     if isinstance(result, dict):
         layout_json = result.get("json_result") or result.get("layout_json")
-        markdown = result.get("md_result") or result.get("markdown")
+        markdown = (
+            result.get("markdown_result")
+            or result.get("md_result")
+            or result.get("markdown")
+        )
         return layout_json, markdown, result
 
     layout_json = getattr(result, "json_result", None)
-    markdown = getattr(result, "md_result", None)
-    raw = {
+    markdown = getattr(result, "markdown_result", None) or getattr(
+        result, "md_result", None
+    )
+    to_dict = getattr(result, "to_dict", None)
+    raw = to_dict() if callable(to_dict) else {
         "json_result": layout_json,
-        "md_result": markdown,
+        "markdown_result": markdown,
     }
     return layout_json, markdown, raw
 

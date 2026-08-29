@@ -12,6 +12,7 @@ class BuildVllmCommandTest(unittest.TestCase):
             "max_model_len": "16384",
             "gpu_memory_utilization": "0.95",
             "speculative_config": '{"method":"ngram"}',
+            "quantization": "",
             "enforce_eager": False,
         }
         values.update(overrides)
@@ -36,6 +37,10 @@ class BuildVllmCommandTest(unittest.TestCase):
         command = self.build(max_num_batched_tokens="8192", max_num_seqs="4")
         self.assertEqual(command[command.index("--max-num-batched-tokens") + 1], "8192")
         self.assertEqual(command[command.index("--max-num-seqs") + 1], "4")
+
+    def test_adds_quantization_when_set(self):
+        command = self.build(quantization="fp8")
+        self.assertEqual(command[command.index("--quantization") + 1], "fp8")
 
 
 if __name__ == "__main__":
