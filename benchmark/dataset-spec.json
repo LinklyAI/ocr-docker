@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "description": "Private 12-page GLM-OCR latency and quality benchmark",
+  "samples": [
+    {
+      "id": "image-ui-meter-list",
+      "kind": "image",
+      "path": "datasets/images/001_DESIGN_M_a2a047_首页-待抄录.png",
+      "groundtruth_file": "001_DESIGN_M_a2a047_首页-待抄录.png"
+    },
+    {
+      "id": "image-social-cn",
+      "kind": "image",
+      "path": "datasets/images/024_SOCIAL_L_ae9837_context-ai.006.jpeg",
+      "groundtruth_file": "024_SOCIAL_L_ae9837_context-ai.006.jpeg"
+    },
+    {
+      "id": "image-slide-cn",
+      "kind": "image",
+      "path": "datasets/images/049_SCREENSHOT_L_f52be8_屏幕快照 2019-09-25 13.07.08.png",
+      "groundtruth_file": "049_SCREENSHOT_L_f52be8_屏幕快照 2019-09-25 13.07.08.png"
+    },
+    {
+      "id": "image-formula",
+      "kind": "image",
+      "path": "datasets/images/068_OTHER_S_8defb4_运输成本目标函数.png",
+      "groundtruth_file": "068_OTHER_S_8defb4_运输成本目标函数.png",
+      "prompt": "Formula Recognition:"
+    },
+    {
+      "id": "image-checkout-cn",
+      "kind": "image",
+      "path": "datasets/images/050_SCREENSHOT_M_ae9ab0_屏幕快照 2015-11-22 下午3.17.57.png",
+      "groundtruth_file": "050_SCREENSHOT_M_ae9ab0_屏幕快照 2015-11-22 下午3.17.57.png"
+    },
+    {
+      "id": "image-chat-long-cn",
+      "kind": "image",
+      "path": "datasets/images/078_SCREENSHOT_XL_81015e_36_3x_shots_so.png",
+      "groundtruth_file": "078_SCREENSHOT_XL_81015e_36_3x_shots_so.png"
+    },
+    {
+      "id": "document-en-frameworks-p1",
+      "kind": "document",
+      "path": "structure-md-test/pdf-rendered/en01_architecture-comparison__p-1.png",
+      "groundtruth_pdf": "structure-md-test/02-pdf-text/en01_architecture-comparison.pdf",
+      "page": 1
+    },
+    {
+      "id": "document-cn-rag-p1",
+      "kind": "document",
+      "path": "structure-md-test/pdf-rendered/cn01_rag-design__p-01.png",
+      "groundtruth_pdf": "structure-md-test/02-pdf-text/cn01_rag-design.pdf",
+      "page": 1
+    },
+    {
+      "id": "document-jp-spec-p1",
+      "kind": "document",
+      "path": "structure-md-test/pdf-rendered/jp01_製品仕様書__p-1.png",
+      "groundtruth_pdf": "structure-md-test/02-pdf-text/jp01_製品仕様書.pdf",
+      "page": 1
+    },
+    {
+      "id": "document-ko-spec-p1",
+      "kind": "document",
+      "path": "structure-md-test/pdf-rendered/ko01_제품사양서__p-1.png",
+      "groundtruth_pdf": "structure-md-test/02-pdf-text/ko01_제품사양서.pdf",
+      "page": 1
+    },
+    {
+      "id": "document-cn-long-p3",
+      "kind": "document",
+      "path": "structure-md-test/pdf-rendered/cn06_ChatGPT-linkly_与_parallel_的一些问题__p-03.png",
+      "groundtruth_pdf": "structure-md-test/02-pdf-text/cn06_ChatGPT-linkly_与_parallel_的一些问题.pdf",
+      "page": 3
+    },
+    {
+      "id": "document-en-index-p1",
+      "kind": "document",
+      "path": "structure-md-test/pdf-rendered/en02_database-indexing__p-1.png",
+      "groundtruth_pdf": "structure-md-test/02-pdf-text/en02_database-indexing.pdf",
+      "page": 1
+    }
+  ]
+}
